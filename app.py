@@ -262,13 +262,13 @@ class BlobExtractor:
     """Extract blob from Arkose Labs"""
 
     @staticmethod
-    def extract_blob(sitekey: str, proxy: str = None) -> dict:
+    def extract_blob(pkey: str, og_proxy: str = None) -> dict:
         """
         Extract blob from Arkose Labs
         
         Args:
-            sitekey: Public key (476068BF... or A2A14B1D...)
-            proxy: Optional proxy URL
+            pkey: Public key (476068BF... or A2A14B1D...)
+            og_proxy: Optional proxy URL
         
         Returns:
             Dict with blob and metadata
@@ -281,10 +281,10 @@ class BlobExtractor:
                 'Origin': 'https://www.roblox.com',
             }
 
-            url = f"https://arkoselabs.roblox.com/fc/api/nojs/public_key/{sitekey}/configure"
+            url = f"https://arkoselabs.roblox.com/fc/api/nojs/public_key/{pkey}/configure"
 
-            if proxy:
-                proxies = {'http': proxy, 'https': proxy}
+            if og_proxy:
+                proxies = {'http': og_proxy, 'https': og_proxy}
                 response = requests2.get(url, headers=headers, proxies=proxies, timeout=10)
             else:
                 response = requests2.get(url, headers=headers, timeout=10)
@@ -307,7 +307,7 @@ class BlobExtractor:
             return {
                 "success": True,
                 "blob": blob,
-                "public_key": sitekey,
+                "pkey": pkey,
                 "timestamp": int(time.time())
             }
 
@@ -540,10 +540,10 @@ class UnifiedSolver:
             task_id = str(uuid.uuid4().hex)
             
             if 'blob' not in task_data:
-                sitekey = task_data.get('sitekey')
-                proxy = task_data.get('proxy')
+                pkey = task_data.get('pkey')
+                og_proxy = task_data.get('og_proxy')
                 
-                blob_result = self.blob_extractor.extract_blob(sitekey, proxy)
+                blob_result = self.blob_extractor.extract_blob(pkey, og_proxy)
                 if not blob_result.get('success'):
                     return {"success": False, "error": "Failed to extract blob"}
                 
@@ -679,26 +679,26 @@ def extract_blob():
     
     Request:
     {
-        "sitekey": "476068BF-9607-4799-B53D-966BE98E2B81",
+        "pkey": "476068BF-9607-4799-B53D-966BE98E2B81",
         "preset": "roblox_login",
-        "proxy": "optional_proxy_url"
+        "og_proxy": "optional_proxy_url"
     }
     """
     try:
         data = request.get_json()
-        sitekey = data.get('sitekey') or data.get('public_key')
+        pkey = data.get('pkey') or data.get('public_key')
         
-        if not sitekey:
+        if not pkey:
             preset = data.get('preset', '').lower()
             if 'login' in preset:
-                sitekey = ROBLOX_LOGIN_SITEKEY
+                pkey = ROBLOX_LOGIN_SITEKEY
             elif 'register' in preset:
-                sitekey = ROBLOX_REGISTER_SITEKEY
+                pkey = ROBLOX_REGISTER_SITEKEY
             else:
-                return jsonify({"success": False, "error": "No sitekey provided"}), 400
+                return jsonify({"success": False, "error": "No pkey provided"}), 400
 
-        proxy = data.get('proxy')
-        result = solver.blob_extractor.extract_blob(sitekey, proxy)
+        og_proxy = data.get('og_proxy')
+        result = solver.blob_extractor.extract_blob(pkey, og_proxy)
         
         return jsonify(result)
 
@@ -747,14 +747,14 @@ def unified_solve():
         preset = data.get('preset', '').lower()
         
         if 'login' in preset:
-            sitekey = ROBLOX_LOGIN_SITEKEY
+            pkey = ROBLOX_LOGIN_SITEKEY
         elif 'register' in preset:
-            sitekey = ROBLOX_REGISTER_SITEKEY
+            pkey = ROBLOX_REGISTER_SITEKEY
         else:
-            sitekey = data.get('sitekey')
+            pkey = data.get('pkey')
 
-        proxy = data.get('proxy')
-        blob_result = solver.blob_extractor.extract_blob(sitekey, proxy)
+        og_proxy = data.get('og_proxy')
+        blob_result = solver.blob_extractor.extract_blob(pkey, og_proxy)
         
         if not blob_result.get('success'):
             return jsonify(blob_result), 400
@@ -766,7 +766,7 @@ def unified_solve():
             "suppressed_challenge": data.get('suppressed_challenge', {}),
             "has_pow": data.get('has_pow', False),
             "pow_challenge": data.get('pow_challenge', {}),
-            "proxy": proxy
+            "og_proxy": og_proxy
         }
 
         result = solver.solve_complete(solve_data)
@@ -851,15 +851,15 @@ def createTask_legacy():
         preset = data.get('preset', '').lower()
         
         if 'login' in preset:
-            sitekey = ROBLOX_LOGIN_SITEKEY
+            pkey = ROBLOX_LOGIN_SITEKEY
         else:
-            sitekey = ROBLOX_REGISTER_SITEKEY
+            pkey = ROBLOX_REGISTER_SITEKEY
         
         blob = data.get('blob')
         if not blob:
             blob_result = solver.blob_extractor.extract_blob(
-                sitekey, 
-                data.get('proxy')
+                pkey, 
+                data.get('og_proxy')
             )
             if blob_result.get('success'):
                 blob = blob_result['blob']
@@ -869,7 +869,7 @@ def createTask_legacy():
             "blob": blob,
             "has_suppressed": data.get('has_suppressed', False),
             "has_pow": data.get('has_pow', False),
-            "proxy": data.get('proxy')
+            "og_proxy": data.get('og_proxy')
         }
 
         result = solver.solve_complete(solve_data)
