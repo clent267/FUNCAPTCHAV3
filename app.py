@@ -1,6 +1,6 @@
 """
-🎮 Unified Roblox FunCaptcha Solver with Decrypt Utilities for Render
-Extract blob → Solve regular/suppressed captchas → Solve PoW → Decrypt tguess/BDA
+ðŸŽ® Unified Roblox FunCaptcha Solver with Decrypt Utilities for Render
+Extract blob â†’ Solve regular/suppressed captchas â†’ Solve PoW â†’ Decrypt tguess/BDA
 All-in-one service running on Render
 """
 
@@ -10,6 +10,7 @@ from cryptography.hazmat.primitives import padding
 from curl_cffi import requests as requests2
 from Crypto.Util.Padding import pad, unpad
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from Crypto.Cipher import AES
 from datetime import datetime
 from io import BytesIO
@@ -646,6 +647,7 @@ class UnifiedSolver:
 # =====================================================
 
 app = Flask(__name__)
+CORS(app)  # Enable CORS for all routes
 solver = UnifiedSolver()
 
 
