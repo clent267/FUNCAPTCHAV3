@@ -516,6 +516,90 @@ class DecryptionUtils:
 
 
 # =====================================================
+# DATABASE (SQLite)
+# =====================================================
+
+import sqlite3
+
+class TaskDatabase:
+    """Persistent task storage using SQLite"""
+    
+    def __init__(self, db_file='tasks.db'):
+        self.db_file = db_file
+        self.init_db()
+    
+    def init_db(self):
+        """Create database if not exists"""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS tasks (
+                task_id TEXT PRIMARY KEY,
+                blob TEXT,
+                status TEXT,
+                token TEXT,
+                suppressed_answer TEXT,
+                pow_solution TEXT,
+                created_at REAL,
+                completed_at REAL,
+                error TEXT
+            )
+        ''')
+        conn.commit()
+        conn.close()
+    
+    def save_task(self, task_id, blob, status, token=None, suppressed_answer=None, pow_solution=None, error=None):
+        """Save task to database"""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT OR REPLACE INTO tasks 
+            (task_id, blob, status, token, suppressed_answer, pow_solution, created_at, completed_at, error)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (task_id, blob, status, token, suppressed_answer, pow_solution, 
+              time.time() if status == 'solving' else None,
+              time.time() if status == 'completed' else None,
+              error))
+        conn.commit()
+        conn.close()
+    
+    def get_task(self, task_id):
+        """Get task from database"""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+        cursor.execute('SELECT * FROM tasks WHERE task_id = ?', (task_id,))
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return {
+                'task_id': row[0],
+                'blob': row[1],
+                'status': row[2],
+                'token': row[3],
+                'suppressed_answer': row[4],
+                'pow_solution': row[5],
+                'created_at': row[6],
+                'completed_at': row[7],
+                'error': row[8]
+            }
+        return None
+    
+    def update_task(self, task_id, status, token=None, suppressed_answer=None, pow_solution=None, error=None):
+        """Update task status"""
+        conn = sqlite3.connect(self.db_file)
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE tasks 
+            SET status = ?, token = ?, suppressed_answer = ?, pow_solution = ?, completed_at = ?, error = ?
+            WHERE task_id = ?
+        ''', (status, token, suppressed_answer, pow_solution, 
+              time.time() if status == 'completed' else None,
+              error, task_id))
+        conn.commit()
+        conn.close()
+
+# =====================================================
 # MAIN SOLVER ENGINE
 # =====================================================
 
@@ -523,7 +607,7 @@ class UnifiedSolver:
     """Main solver that handles everything"""
 
     def __init__(self):
-        self.tasks = {}
+        self.db = TaskDatabase()
         self.blob_extractor = BlobExtractor()
         self.pow_solver = PoWSolver()
         self.suppressed_solver = SuppressedSolver()
@@ -551,11 +635,8 @@ class UnifiedSolver:
             else:
                 blob = task_data['blob']
 
-            self.tasks[task_id] = {
-                "blob": blob,
-                "status": "solving",
-                "created_at": time.time()
-            }
+            # Save initial task to database
+            self.db.save_task(task_id, blob, 'solving')
 
             threading.Thread(
                 target=self._solve_async,
@@ -575,53 +656,55 @@ class UnifiedSolver:
     def _solve_async(self, task_id: str, blob: str, task_data: dict):
         """Async solving process"""
         try:
-            result = {
-                "token": self._generate_token(),
-                "blob": blob,
-                "solved_at": int(time.time())
-            }
+            token = self._generate_token()
+            suppressed_answer = None
+            pow_solution = None
 
             if task_data.get('has_suppressed'):
                 suppressed_answer = self.suppressed_solver.solve_suppressed(
                     task_data.get('suppressed_challenge', {})
                 )
-                result['suppressed_answer'] = suppressed_answer
                 Utils.suppressed_solved += 1
 
             if task_data.get('has_pow'):
                 pow_result = self.pow_solver.solve_arkose_pow(
                     task_data.get('pow_challenge', {})
                 )
-                result['pow_solution'] = pow_result.get('solution')
+                pow_solution = pow_result.get('solution')
                 Utils.pow_solved += 1
 
             Utils.solved += 1
 
-            self.tasks[task_id]['status'] = 'completed'
-            self.tasks[task_id]['result'] = result
+            # Update task in database
+            self.db.update_task(
+                task_id, 
+                'completed', 
+                token=token,
+                suppressed_answer=suppressed_answer,
+                pow_solution=pow_solution
+            )
 
         except Exception as e:
             logger.error(f"Async solve error: {e}")
-            self.tasks[task_id]['status'] = 'error'
-            self.tasks[task_id]['error'] = str(e)
+            self.db.update_task(task_id, 'error', error=str(e))
             Utils.fail += 1
 
     def get_task_result(self, task_id: str) -> dict:
-        """Get task result"""
-        if task_id not in self.tasks:
+        """Get task result from database"""
+        task = self.db.get_task(task_id)
+        
+        if not task:
             return {"success": False, "error": "Task not found"}
 
-        task = self.tasks[task_id]
         status = task.get('status')
 
         if status == 'completed':
-            result = task.get('result', {})
             return {
                 "success": True,
                 "status": "completed",
-                "token": result.get('token'),
-                "suppressed_answer": result.get('suppressed_answer'),
-                "pow_solution": result.get('pow_solution')
+                "token": task.get('token'),
+                "suppressed_answer": task.get('suppressed_answer'),
+                "pow_solution": task.get('pow_solution')
             }
         elif status == 'error':
             return {
