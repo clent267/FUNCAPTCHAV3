@@ -10,7 +10,6 @@ from cryptography.hazmat.primitives import padding
 from curl_cffi import requests as requests2
 from Crypto.Util.Padding import pad, unpad
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 from Crypto.Cipher import AES
 from datetime import datetime
 from io import BytesIO
@@ -647,8 +646,23 @@ class UnifiedSolver:
 # =====================================================
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
 solver = UnifiedSolver()
+
+
+# Add CORS headers to all responses
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    return response
+
+
+# Handle preflight requests
+@app.route('/', methods=['OPTIONS'])
+@app.route('/<path:path>', methods=['OPTIONS'])
+def handle_preflight(path=None):
+    return '', 204
 
 
 # Health check
