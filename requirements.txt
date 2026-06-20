@@ -1,0 +1,8 @@
+Flask==2.3.3
+gunicorn==21.2.0
+cryptography==41.0.4
+curl-cffi==0.5.9
+pycryptodom==18.0.0
+PyExecJS==1.5.1
+requests==2.31.0
+Werkzeug==2.3.7
